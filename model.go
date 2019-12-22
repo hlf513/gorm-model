@@ -226,9 +226,12 @@ func (m *Model) UpdateOneById(set map[string]interface{}, data interface{}) erro
 }
 
 // UpdateAllByWhere 根据 where 批量更新数据
-func (m *Model) UpdateAllByWhere(tableName string, where, set map[string]interface{}) error {
+func (m *Model) UpdateAllByWhere(where, set map[string]interface{}, data interface{}) error {
+	if !m.db.NewRecord(data) {
+		return primaryKeyNoBlankError()
+	}
 	// 自动更新 update_at 字段
-	if err := m.prepare(nil, where).Table(tableName).Update(set).Error; err != nil {
+	if err := m.prepare(nil, where).Model(data).Update(set).Error; err != nil {
 		return err
 	}
 
@@ -241,6 +244,9 @@ func (m *Model) DeleteOneById(data interface{}, force ...bool) error {
 		return primaryKeyBlankError()
 	}
 	if len(force) > 0 && force[0] == true {
+		deleteKey := m.deletedKey
+		m.ClearValidCondition()
+		defer m.SetSoftDeletedKey(deleteKey)
 		if err := m.db.Limit(1).Delete(data).Error; err != nil {
 			return err
 		}
@@ -254,15 +260,21 @@ func (m *Model) DeleteOneById(data interface{}, force ...bool) error {
 }
 
 // DeleteAllByWhere 根据 where 删除数据，默认是软删除
-func (m *Model) DeleteAllByWhere(tableName string, where map[string]interface{}, force ...bool) error {
+func (m *Model) DeleteAllByWhere(where map[string]interface{}, data interface{}, force ...bool) error {
+	if !m.db.NewRecord(data) {
+		return primaryKeyNoBlankError()
+	}
 	if len(force) > 0 && force[0] == true {
-		if err := m.prepare(nil, where).Table(tableName).Delete(nil).Error; err != nil {
+		deleteKey := m.deletedKey
+		m.ClearValidCondition()
+		defer m.SetSoftDeletedKey(deleteKey)
+		if err := m.prepare(nil, where).Model(data).Delete(data).Error; err != nil {
 			return err
 		}
 	} else {
-		return m.UpdateAllByWhere(tableName, where, map[string]interface{}{
+		return m.UpdateAllByWhere(where, map[string]interface{}{
 			m.deletedKey: "Y",
-		})
+		}, data)
 	}
 
 	return nil

@@ -312,11 +312,11 @@ func TestModel_UpdateOneById(t *testing.T) {
 func TestModel_UpdateAllByWhere(t *testing.T) {
 	model := getModel()
 	var u User
-	err := model.UpdateAllByWhere("user", map[string]interface{}{
+	err := model.UpdateAllByWhere(map[string]interface{}{
 		"id = ?": 1,
 	}, map[string]interface{}{
 		"user_name": "user1",
-	})
+	}, &u)
 	assert.NoError(t, err)
 	fmt.Println(u)
 }
@@ -337,13 +337,14 @@ func TestModel_DeleteOneById(t *testing.T) {
 
 func TestModel_DeleteAllByWhere(t *testing.T) {
 	model := getModel()
-	err := model.DeleteAllByWhere("user", map[string]interface{}{
+	var u User
+	err := model.DeleteAllByWhere(map[string]interface{}{
 		"id <= ?": 3,
-	})
+	}, &u)
 	assert.NoError(t, err)
 
-	err = model.DeleteAllByWhere("user", map[string]interface{}{
+	err = model.DeleteAllByWhere(map[string]interface{}{
 		"id <= ?": 3,
-	}, true)
+	}, &u, true)
 	assert.NoError(t, err)
 }
