@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hlf513/gorm-bulk-insert"
 	"github.com/jinzhu/gorm"
-	"github.com/t-tiger/gorm-bulk-insert"
 )
 
 type Model struct {
@@ -88,8 +88,8 @@ func (m *Model) Create(data interface{}) error {
 }
 
 // BatchInsert 批量插入数据
-func (m *Model) BatchInsert(data []interface{}, onceCount int, excludeCols ...string) error {
-	return gormbulk.BulkInsert(m.db, data, onceCount, excludeCols...)
+func (m *Model) BatchInsert(data []interface{}, onceCount int, action string, excludeCols ...string) error {
+	return gormbulk.BulkInsert(m.db, data, onceCount, action, excludeCols...)
 }
 
 // FetchOneById 通过 ID 查询一条数据
