@@ -219,6 +219,20 @@ func (m *Model) Count(tableName string, where map[string]interface{}, groupHavin
 	return c, nil
 }
 
+// UpdateOneByWhere 根据 where 更新一条数据
+func (m *Model) UpdateOneByWhere(where, set map[string]interface{}, model interface{}) error {
+	if !m.db.NewRecord(model) {
+		return primaryKeyNoBlankError()
+	}
+	db := m.prepare(nil, where).Model(model)
+	// 自动更新 update_at 字段
+	if err := db.Limit(1).Update(set).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // UpdateOneById 根据 ID 更新一条数据
 func (m *Model) UpdateOneById(set map[string]interface{}, idData interface{}) error {
 	if m.db.NewRecord(idData) {
@@ -240,6 +254,30 @@ func (m *Model) UpdateAllByWhere(where, set map[string]interface{}, model interf
 	// 自动更新 update_at 字段
 	if err := m.prepare(nil, where).Model(model).Update(set).Error; err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// DeleteOneByWhere 根据 Where 删除数据；默认是软删除
+func (m *Model) DeleteOneByWhere(where map[string]interface{}, model interface{}, force ...bool) error {
+	if !m.db.NewRecord(model) {
+		return primaryKeyNoBlankError()
+	}
+
+	db := m.prepare(nil, where).Model(model)
+
+	if len(force) > 0 && force[0] == true {
+		deleteKey := m.deletedKey
+		m.ClearValidCondition()
+		defer m.SetSoftDeletedKey(deleteKey)
+		if err := db.Limit(1).Delete(model).Error; err != nil {
+			return err
+		}
+	} else {
+		return m.UpdateOneByWhere(where, map[string]interface{}{
+			m.deletedKey: "Y",
+		}, model)
 	}
 
 	return nil
