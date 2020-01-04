@@ -177,12 +177,6 @@ func (m *Model) SearchAll(
 	groupHaving ...string,
 ) error {
 	db := m.prepare(nil, where).Select(fields).Table(tableName)
-	if limit > 0 {
-		db = db.Offset(offset).Limit(limit)
-	}
-	if order != nil {
-		db = db.Order(order)
-	}
 	l := len(groupHaving)
 	if l > 0 {
 		db = db.Group(groupHaving[0])
@@ -193,7 +187,12 @@ func (m *Model) SearchAll(
 	if total != nil {
 		db.Count(total)
 	}
-
+	if order != nil {
+		db = db.Order(order)
+	}
+	if limit > 0 {
+		db = db.Offset(offset).Limit(limit)
+	}
 	if err := db.Scan(data).Error; err != nil {
 		return err
 	}
