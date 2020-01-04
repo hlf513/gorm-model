@@ -97,7 +97,11 @@ func (m *Model) FetchOneById(id int, data interface{}, fields ...interface{}) er
 	if !m.db.NewRecord(data) {
 		return primaryKeyNoBlankError()
 	}
-	if err := m.prepare(fields).Limit(1).Find(data, id).Error; err != nil {
+	err := m.prepare(fields).Limit(1).Find(data, id).Error
+	if gorm.IsRecordNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 
@@ -109,7 +113,11 @@ func (m *Model) FetchOneByWhere(where map[string]interface{}, data interface{}, 
 	if !m.db.NewRecord(data) {
 		return primaryKeyNoBlankError()
 	}
-	if err := m.prepare(fields, where).Limit(1).Find(data).Error; err != nil {
+	err := m.prepare(fields, where).Limit(1).Find(data).Error
+	if gorm.IsRecordNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 
@@ -160,7 +168,11 @@ func (m *Model) SearchOne(
 			db = db.Having(groupHaving[1])
 		}
 	}
-	if err := db.Scan(data).Error; err != nil {
+	err := db.Scan(data).Error
+	if gorm.IsRecordNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 
