@@ -5,6 +5,7 @@ import (
 	"log"
 	"testing"
 
+	gormbulk "github.com/hlf513/gorm-bulk-insert"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 	"github.com/stretchr/testify/assert"
@@ -34,12 +35,18 @@ func init() {
 	db.LogMode(true)
 	// 创建测试表结构
 	db.AutoMigrate(&User{})
+	
+	db.Exec("Truncate table user")
 }
 
 type User struct {
 	CommonCols
 	UserID   int    `gorm:"column:user_id" json:"user_id"`
 	UserName string `gorm:"column:user_name" json:"user_name"`
+}
+
+func (u User) TableName() string {
+	return "user"
 }
 
 func getModel() *Model {
@@ -62,7 +69,7 @@ func TestModel_BatchInsert(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		users = append(users, User{UserID: i})
 	}
-	err := getModel().BatchInsert(users, 3)
+	err := getModel().BatchInsert(users, 3, gormbulk.Insert)
 
 	assert.NoError(t, err)
 }
@@ -87,42 +94,11 @@ func TestModel_FetchOneById(t *testing.T) {
 
 	model := getModel()
 	for _, v := range users {
-		err := model.FetchOneById(&v.user, "user_id")
+		var u User
+		err := model.FetchOneById(v.user.TableName(), v.user.ID, &u, "user_id")
 		assert.NoError(t, err)
-		assert.Equal(t, v.excepted, v.user.UserID)
-		fmt.Print(v.user)
+		assert.Equal(t, v.excepted, u.UserID)
 	}
-
-	var user2 = []struct {
-		user     User
-		excepted string
-	}{
-		// 数据不存在
-		{User{
-			CommonCols: CommonCols{ID: -1},
-			UserID:     9,
-			UserName:   "",
-		}, "record not found"},
-		// 这里会报错；因为 ID 未被赋值了
-		{User{
-			UserID: 10,
-		}, "primary key is blank"},
-	}
-
-	for _, v := range user2 {
-		err := model.FetchOneById(&v.user)
-		assert.Error(t, err)
-		assert.EqualError(t, err, v.excepted)
-	}
-}
-
-func TestModel_IsNil(t *testing.T) {
-	var user User
-	user.ID = -1
-	model := getModel()
-	err := model.FetchOneById(&user)
-	assert.Error(t, err)
-	assert.Equal(t, true, model.IsNil(err))
 }
 
 func TestModel_FetchOneByWhere(t *testing.T) {
@@ -143,31 +119,10 @@ func TestModel_FetchOneByWhere(t *testing.T) {
 
 	model := getModel()
 	for _, v := range users {
-		err := model.FetchOneByWhere(v.where, &v.user, "user_id")
+		var u User
+		err := model.FetchOneByWhere(v.user.TableName(), v.where, &u, "user_id")
 		assert.NoError(t, err)
-		assert.Equal(t, v.excepted, v.user.UserID)
-	}
-
-	var user2 = []struct {
-		where    map[string]interface{}
-		user     User
-		excepted string
-	}{
-		// 数据不存在
-		{map[string]interface{}{
-			"id = ?": 0,
-		}, User{UserID: 9}, "record not found"},
-		// 这里会报错；因为 ID 被赋值了
-		{nil, User{
-			CommonCols: CommonCols{ID: 2},
-			UserID:     10,
-		}, "primary key is not blank"},
-	}
-
-	for _, v := range user2 {
-		err := model.FetchOneByWhere(v.where, &v.user)
-		assert.Error(t, err)
-		assert.EqualError(t, err, v.excepted)
+		assert.Equal(t, v.excepted, u.UserID)
 	}
 }
 
@@ -184,7 +139,7 @@ func TestModel_FetchAllByIds(t *testing.T) {
 		},
 	}
 	model := getModel()
-	err := model.FetchAllByIds([]int{-1, -2}, &users, "user_id")
+	err := model.FetchAllByIds(User{}.TableName(), []int{-1, -2}, &users, "user_id")
 	assert.NoError(t, err)
 	assert.Equal(t, []User{}, users) // 被覆盖了
 
@@ -197,7 +152,7 @@ func TestModel_FetchAllByIds(t *testing.T) {
 		{[]int{-1, -2}, []User{}, 0},
 	}
 	for _, v := range users2 {
-		err := model.FetchAllByIds(v.ids, &v.users, "id desc")
+		err := model.FetchAllByIds(User{}.TableName(), v.ids, &v.users, "id desc")
 		assert.NoError(t, err)
 		assert.Equal(t, v.excepted, len(v.users))
 	}
@@ -216,7 +171,7 @@ func TestModel_FetchAllByWhere(t *testing.T) {
 		},
 	}
 	model := getModel()
-	err := model.FetchAllByWhere(map[string]interface{}{
+	err := model.FetchAllByWhere(User{}.TableName(), map[string]interface{}{
 		"id < ?": 0,
 	}, &users, "id desc", "user_id")
 	assert.NoError(t, err)
@@ -235,7 +190,7 @@ func TestModel_FetchAllByWhere(t *testing.T) {
 		}, []User{}, 0},
 	}
 	for _, v := range users2 {
-		err := model.FetchAllByWhere(v.where, &v.users, "id desc", "user_id")
+		err := model.FetchAllByWhere(User{}.TableName(), v.where, &v.users, "id desc", "user_id")
 		assert.NoError(t, err)
 		assert.Equal(t, v.excepted, len(v.users))
 		if v.excepted > 0 {
@@ -266,10 +221,11 @@ func TestModel_SearchAll(t *testing.T) {
 		UserId int
 	}
 	var u []user
+	var total int
 	model := getModel()
 	err := model.SearchAll("user", "id,user_id,count(*) t", map[string]interface{}{
 		"id > ?": 0,
-	}, &u, "id desc", 0, 2, "user_id,id", "t > 0")
+	}, &u, "id desc", &total, 0, 2, "user_id,id", "t > 0")
 	assert.NoError(t, err)
 	assert.True(t, true, len(u) == 2)
 }
@@ -290,61 +246,28 @@ func TestModel_Count(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
-func TestModel_UpdateOneById(t *testing.T) {
-	// 更新后，结构体中只会更新已更新的字段
-	var user = User{}
-	user.ID = 1
-
-	model := getModel()
-	err := model.UpdateOneById(map[string]interface{}{
-		"user_id": 99,
-	}, &user)
-	assert.NoError(t, err)
-	assert.Empty(t, user.UserName)
-
-	var user2 User
-	err = model.UpdateOneById(map[string]interface{}{
-		"user_id": 0,
-	}, &user2)
-	assert.Errorf(t, err, "primary key is blank")
-}
-
 func TestModel_UpdateAllByWhere(t *testing.T) {
 	model := getModel()
 	var u User
-	err := model.UpdateAllByWhere(map[string]interface{}{
+	err := model.UpdateAllByWhere(u, map[string]interface{}{
 		"id = ?": 1,
 	}, map[string]interface{}{
 		"user_name": "user1",
-	}, &u)
+	})
 	assert.NoError(t, err)
 	fmt.Println(u)
-}
-
-func TestModel_DeleteOneById(t *testing.T) {
-	model := getModel()
-	var u User
-	u.ID = 1
-	err := model.DeleteOneById(&u)
-	assert.NoError(t, err)
-
-	err = model.DeleteOneById(&u, true)
-	assert.NoError(t, err)
-
-	err = model.FetchOneById(1, User{})
-	assert.Errorf(t, err, "record not found")
 }
 
 func TestModel_DeleteAllByWhere(t *testing.T) {
 	model := getModel()
 	var u User
-	err := model.DeleteAllByWhere(map[string]interface{}{
+	err := model.DeleteAllByWhere(u, map[string]interface{}{
 		"id <= ?": 3,
-	}, &u)
+	})
 	assert.NoError(t, err)
 
-	err = model.DeleteAllByWhere(map[string]interface{}{
+	err = model.DeleteAllByWhere(u, map[string]interface{}{
 		"id <= ?": 3,
-	}, &u, true)
+	}, true)
 	assert.NoError(t, err)
 }

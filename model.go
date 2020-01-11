@@ -71,11 +71,6 @@ func (m *Model) prepare(fields interface{}, conditions ...map[string]interface{}
 	return q
 }
 
-// IsNil 是否未找到记录
-func (m *Model) IsNil(err error) bool {
-	return gorm.IsRecordNotFoundError(err)
-}
-
 // Create 新增一条数据
 func (m *Model) Create(data interface{}) error {
 	if m.db.NewRecord(data) {
@@ -93,11 +88,11 @@ func (m *Model) BatchInsert(data []interface{}, onceCount int, action string, ex
 }
 
 // FetchOneById 通过 ID 查询一条数据
-func (m *Model) FetchOneById(id int, data interface{}, fields ...interface{}) error {
+func (m *Model) FetchOneById(table string, id int, data interface{}, fields ...interface{}) error {
 	if !m.db.NewRecord(data) {
 		return primaryKeyNoBlankError()
 	}
-	err := m.prepare(fields).Limit(1).Find(data, id).Error
+	err := m.prepare(fields).Table(table).Limit(1).Find(data, id).Error
 	if gorm.IsRecordNotFoundError(err) {
 		return nil
 	}
@@ -109,11 +104,11 @@ func (m *Model) FetchOneById(id int, data interface{}, fields ...interface{}) er
 }
 
 // FetchOneByWhere 通过 where 查询一条数据
-func (m *Model) FetchOneByWhere(where map[string]interface{}, data interface{}, fields ...interface{}) error {
+func (m *Model) FetchOneByWhere(table string, where map[string]interface{}, data interface{}, fields ...interface{}) error {
 	if !m.db.NewRecord(data) {
 		return primaryKeyNoBlankError()
 	}
-	err := m.prepare(fields, where).Limit(1).Find(data).Error
+	err := m.prepare(fields, where).Table(table).Limit(1).Find(data).Error
 	if gorm.IsRecordNotFoundError(err) {
 		return nil
 	}
@@ -125,12 +120,12 @@ func (m *Model) FetchOneByWhere(where map[string]interface{}, data interface{}, 
 }
 
 // FetchByIds 通过 ids 查询多条记录
-func (m *Model) FetchAllByIds(ids, data, order interface{}, fields ...interface{}) error {
+func (m *Model) FetchAllByIds(table string, ids, data, order interface{}, fields ...interface{}) error {
 	db := m.prepare(fields)
 	if order != nil {
 		db = db.Order(order)
 	}
-	if err := db.Find(data, ids).Error; err != nil {
+	if err := db.Table(table).Find(data, ids).Error; err != nil {
 		return err
 	}
 
@@ -138,12 +133,12 @@ func (m *Model) FetchAllByIds(ids, data, order interface{}, fields ...interface{
 }
 
 // FetchAllByWhere 通过 where 查询多条记录
-func (m *Model) FetchAllByWhere(where map[string]interface{}, data, order interface{}, fields ...interface{}) error {
+func (m *Model) FetchAllByWhere(table string, where map[string]interface{}, data, order interface{}, fields ...interface{}) error {
 	db := m.prepare(fields, where)
 	if order != nil {
 		db = db.Order(order)
 	}
-	if err := db.Find(data).Error; err != nil {
+	if err := db.Table(table).Find(data).Error; err != nil {
 		return err
 	}
 
@@ -232,7 +227,7 @@ func (m *Model) Count(tableName string, where map[string]interface{}, groupHavin
 }
 
 // UpdateOneByWhere 根据 where 更新一条数据
-func (m *Model) UpdateOneByWhere(where, set map[string]interface{}, model interface{}) error {
+func (m *Model) UpdateOneByWhere(model interface{}, where, set map[string]interface{}) error {
 	if !m.db.NewRecord(model) {
 		return primaryKeyNoBlankError()
 	}
@@ -245,21 +240,8 @@ func (m *Model) UpdateOneByWhere(where, set map[string]interface{}, model interf
 	return nil
 }
 
-// UpdateOneById 根据 ID 更新一条数据
-func (m *Model) UpdateOneById(set map[string]interface{}, idData interface{}) error {
-	if m.db.NewRecord(idData) {
-		return primaryKeyBlankError()
-	}
-	// 自动更新 update_at 字段
-	if err := m.db.Model(idData).Limit(1).Update(set).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // UpdateAllByWhere 根据 where 批量更新数据
-func (m *Model) UpdateAllByWhere(where, set map[string]interface{}, model interface{}) error {
+func (m *Model) UpdateAllByWhere(model interface{}, where, set map[string]interface{}) error {
 	if !m.db.NewRecord(model) {
 		return primaryKeyNoBlankError()
 	}
@@ -272,7 +254,7 @@ func (m *Model) UpdateAllByWhere(where, set map[string]interface{}, model interf
 }
 
 // DeleteOneByWhere 根据 Where 删除数据；默认是软删除
-func (m *Model) DeleteOneByWhere(where map[string]interface{}, model interface{}, force ...bool) error {
+func (m *Model) DeleteOneByWhere(model interface{}, where map[string]interface{}, force ...bool) error {
 	if !m.db.NewRecord(model) {
 		return primaryKeyNoBlankError()
 	}
@@ -287,37 +269,16 @@ func (m *Model) DeleteOneByWhere(where map[string]interface{}, model interface{}
 			return err
 		}
 	} else {
-		return m.UpdateOneByWhere(where, map[string]interface{}{
+		return m.UpdateOneByWhere(model, where, map[string]interface{}{
 			m.deletedKey: "Y",
-		}, model)
-	}
-
-	return nil
-}
-
-// DeleteOneById 根据 ID 删除数据；默认是软删除
-func (m *Model) DeleteOneById(idData interface{}, force ...bool) error {
-	if m.db.NewRecord(idData) {
-		return primaryKeyBlankError()
-	}
-	if len(force) > 0 && force[0] == true {
-		deleteKey := m.deletedKey
-		m.ClearValidCondition()
-		defer m.SetSoftDeletedKey(deleteKey)
-		if err := m.db.Limit(1).Delete(idData).Error; err != nil {
-			return err
-		}
-	} else {
-		return m.UpdateOneById(map[string]interface{}{
-			m.deletedKey: "Y",
-		}, idData)
+		})
 	}
 
 	return nil
 }
 
 // DeleteAllByWhere 根据 where 删除数据，默认是软删除
-func (m *Model) DeleteAllByWhere(where map[string]interface{}, model interface{}, force ...bool) error {
+func (m *Model) DeleteAllByWhere(model interface{}, where map[string]interface{}, force ...bool) error {
 	if !m.db.NewRecord(model) {
 		return primaryKeyNoBlankError()
 	}
@@ -329,9 +290,9 @@ func (m *Model) DeleteAllByWhere(where map[string]interface{}, model interface{}
 			return err
 		}
 	} else {
-		return m.UpdateAllByWhere(where, map[string]interface{}{
+		return m.UpdateAllByWhere(model, where, map[string]interface{}{
 			m.deletedKey: "Y",
-		}, model)
+		})
 	}
 
 	return nil
