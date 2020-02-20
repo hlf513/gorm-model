@@ -1,6 +1,7 @@
 package gorm_model
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -200,7 +201,7 @@ func (m *Model) SearchAll(
 	if limit > 0 {
 		db = db.Offset(offset).Limit(limit)
 	}
-	if err := db.Scan(data).Error; err != nil {
+	if err := db.Scan(data).Error; err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
